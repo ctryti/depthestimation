@@ -1,0 +1,116 @@
+* DepthEstimator object lifecycle
+
+  The short description:
+
+  1. Instantiate a DepthEstimator object
+  2. Call setSize
+  3. Set other optional settings
+  4. Object is now ready for continous calls to estimate()
+
+
+  The longer description:
+
+  1. Instantiate a DepthEstimator object
+
+     Currently only has a default constructor, initializing internal
+     variables with (invalid/unusable) values
+
+  2. Call setSize
+
+     This is the only function that MUST be called. There is no
+     general default value that can be used, and estimate() cannot
+     determine the images dimensions.
+
+  3. Set optional settings
+     Optional settings include:
+
+     - void setMaximumDisparity(int value);
+     Defines the disparity search range
+
+     - void setAggregationWindowDimensions(int value);
+     Defines the window size to use in the cost aggregation step
+
+     - void setNormalize(bool normalize);
+     Adjust disparity range from [0, max disp] to [0, 255]. Makes
+     small max disparity depth maps more visible.
+
+     - void setAlgorithm(std::string name);
+     Select which Stereo Matching algorithm to use.
+
+     - void setCostFunction(std::string name);
+     Select which cost function to use
+
+     - void setCrossCheck(bool value);
+     Enable cross-checking of disparity maps to eliminate matching
+     errors and occlusions. Only usable with Stereo Matching
+     algorithms that produce 2 disparity maps.
+
+     - void useOcclusionFilling(bool value);
+     Enable Occlulsion Filling kernel. Only actually does anything if
+     cross-checking is also used.
+
+     - void useDiffingKernel(bool value);
+     Enable diffing of consecutive image sets. Only usable with video
+     streams.
+
+  4. Object is now ready for continuous calls to estimate()
+
+     The actual signature is:
+
+     void estimate(uchar *left_image, uchar *right_image, uchar
+     *left_result_image,uchar *right_result_image)
+
+     The first 2 arguments are left unmodified. When estimate returns,
+     the 2 last arguments will contain the left (and the right, if the
+     algorithm chosen is able to) disparity maps.
+
+
+
+* Files
+
+  - depthestimation.hpp
+    Contains the definitions of both host and opencl device code.
+
+  - depthestimation.cpp
+    Contains implementation of host code
+
+  - opencl.cpp
+    Contains implementation of GPU code
+
+
+
+* General structure
+
+** Kernel organization
+
+   Important concepts in the code is the grouping of OpenCL kernels and
+   it's variables. To launch a kernel, we need:
+
+   - a cl::Kernel object extracted and compiled from OpenCL-C source
+   - the cl::Kernel objects arguments must be set
+   - a cl::NDRange object that describes the work-group configuration
+   - a cl::NDRange object that describes the launch offsets
+
+   A kernel is identified by it's function name. This name is used a
+   the key to 3 maps:
+
+   std::map<std::string, cl::Kernel>                m_cl_kernels;
+   std::map<std::string, std::vector<cl::NDRange> > m_worksizes;
+   std::map<std::string, cl::NDRange>               m_kernel_offsets;
+
+   m_worksizes holds two cl::NDRange objects, first is for local
+   work-size configuration, second for global work-size configuration.
+
+   When we want to launch a kernel, we can then just select a kernel
+   name and fetch all 3 variables from the maps with this name, and
+   call cl::enqueuNDRange.
+
+
+** update{kernel-name}Kernel()
+
+   Each kernel needs an void update<KernelName>Kernel() function that
+   creates the kernel object (if it doesn't already exist), sets it's
+   arguments, configure work sizes and sets a launch offset.
+
+   All the update{kernel-name}Kernel() functions have similar
+   structure, and can be copied and renamed when adding new kernels.
